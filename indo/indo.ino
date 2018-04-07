@@ -20,6 +20,7 @@ DHT dht(DHTPIN, DHTTYPE);
 
 LiquidCrystal lcd(12, 11, 7, 6, 5, 4);
 
+// Boludes
 volatile int sec;
 
 

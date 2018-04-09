@@ -1,5 +1,5 @@
 #include <Wire.h>
-#include <WireKinetis.h>
+//#include <WireKinetis.h>
 
 #include <DHT.h>
 #include <LiquidCrystal.h>
@@ -11,29 +11,36 @@
 #define DHTPIN 10
 #define DHTTYPE DHT11
 
-#define INITPIN 2
-#define ENDPIN 3
+#define SETPIN 2
+#define UPPIN 3
+#define DOWNPIN 8
 
 #define LUZPIN 13
+
+#define STATE_IDLE 0
+#define STATE_CHANGE_INIT 1
+#define STATE_CHANGE_END 2
+
 
 DHT dht(DHTPIN, DHTTYPE);
 
 LiquidCrystal lcd(12, 11, 7, 6, 5, 4);
 
-// Boludes
-volatile int sec;
-
-
 // ventanas de media hora
 int initTime, endTime;
+
+int state;
+float ellapsedTime;
+float ellapsedChangeTime;
 
 void setup() {
   Serial.begin(9600);
 
   pinMode(LUZPIN, OUTPUT);
 
-  pinMode(INITPIN, INPUT_PULLUP);
-  pinMode(ENDPIN, INPUT_PULLUP);
+  pinMode(UPPIN, INPUT);
+  pinMode(DOWNPIN, INPUT);
+  pinMode(SETPIN, INPUT);
 
   pinMode(A4, OUTPUT);
   digitalWrite(A4, HIGH);
@@ -60,79 +67,155 @@ void setup() {
   // Valores default para la luz
   initTime = 14 * 60;
   endTime = 8 * 60;
-  sec = 0;
 
-  // Interrupciones
-  attachInterrupt(digitalPinToInterrupt(INITPIN), raiseInit, RISING );
-  attachInterrupt(digitalPinToInterrupt(ENDPIN), raiseEnd, RISING );
+  state = STATE_IDLE;
+  ellapsedTime = 0;
+  ellapsedChangeTime = 0;
 }
 
 void loop() {
-  digitalClockDisplay();
-
+  //digitalClockDisplay();
+  Serial.print("button 1: ");
+  Serial.println(digitalRead(SETPIN));
+  Serial.print("button 2: ");
+  Serial.println(digitalRead(UPPIN));
+  Serial.print("button 3: ");
+  Serial.println(digitalRead(DOWNPIN));
+  
   lcd.clear();
-  mostrarTemperaturaHumedad();
-  mostrarHora();
+
+  handleState();
+  
+  switch(state)
+  {
+    case STATE_IDLE:
+    mostrarTemperaturaHumedad();
+    mostrarHora();
+    break;
+
+    case STATE_CHANGE_INIT:
+    handleChangeInit();
+    break;
+
+    case STATE_CHANGE_END:
+    handleChangeEnd();
+    break;
+
+    default:
+    state = STATE_IDLE;
+    Serial.println("CUALQUIERA!!!");
+    break;
+    
+  }
   
   handleLuz();
 
-  delay(1000 * 30);
+  delay(100);
 }
 
-
-// Cuando se toca el boton para la hora de encendido
-void raiseInit()
-{
-  int segundo = second();
-  if(segundo > sec)
-  {
-    // Informo en la pantalla
-    lcd.clear();
-    lcd.print("Luz se enciende:");
+void handleChangeInit()
+{  
+  // Informo en la pantalla
+  lcd.clear();
+  lcd.print("Luz se enciende:");
   
-    // Cambio la hora de inicio
+  ellapsedChangeTime += (millis() / 1000);
+  if(digitalRead(UPPIN) && ellapsedChangeTime > 0.5)
+  {
+    ellapsedChangeTime = 0;
+    ellapsedTime = 0.5;
+
     initTime += 30;
     if(initTime >= 24*60)
       initTime = 0;
-  
-    // La muestro
-    int hora = floor(initTime / 60);
-    int minuto = initTime % 60;
-    lcd.setCursor(0, 1);
-    lcd.print("                ");
-    lcd.setCursor(0, 1);
-    printDigitsLcd(hora);
-    lcd.print(":");
-    printDigitsLcd(minuto);
   }
+  if(digitalRead(DOWNPIN) && ellapsedChangeTime > 0.5)
+  {
+    ellapsedChangeTime = 0;
+    ellapsedTime = 0.5;
+
+    initTime -= 30;
+    if(initTime < 0)
+      initTime = 24 * 60 - 30;
+  }
+
+  // La muestro
+  int hora = floor(initTime / 60);
+  int minuto = initTime % 60;
+  lcd.setCursor(0, 1);
+  lcd.print("                ");
+  lcd.setCursor(0, 1);
+  printDigitsLcd(hora);
+  lcd.print(":");
+  printDigitsLcd(minuto);
 }
 
-// Cuando se toca el boton para la hora de apagado
-void raiseEnd()
-{
-  int segundo = second();
-  if(segundo > sec)
-  {
-    // Informo en la pantalla
-    lcd.print(" Luz se apaga:  ");
+void handleChangeEnd()
+{  
+  // Informo en la pantalla
+  lcd.clear();
+  lcd.print(" Luz se apaga:  ");
   
-    // Cambio la hora de inicio
+  ellapsedChangeTime += (millis() / 1000);
+  if(digitalRead(UPPIN) && ellapsedChangeTime > 0.5)
+  {
+    ellapsedChangeTime = 0;
+    ellapsedTime = 0.5;
+
     endTime += 30;
     if(endTime >= 24*60)
       endTime = 0;
-      
-    // La muestro
-    int hora = floor(endTime / 60);
-    int minuto = endTime % 60;
-    lcd.setCursor(0, 1);
-    lcd.print("                ");
-    lcd.setCursor(0, 1);
-    printDigitsLcd(hora);
-    lcd.print(":");
-    printDigitsLcd(minuto);
   }
+  if(digitalRead(DOWNPIN) && ellapsedChangeTime > 0.5)
+  {
+    ellapsedChangeTime = 0;
+    ellapsedTime = 0.5;
+
+    endTime -= 30;
+    if(endTime < 0)
+      endTime = 24 * 60 - 30;
+  }
+
+  // La muestro
+  int hora = floor(endTime / 60);
+  int minuto = endTime % 60;
+  lcd.setCursor(0, 1);
+  lcd.print("                ");
+  lcd.setCursor(0, 1);
+  printDigitsLcd(hora);
+  lcd.print(":");
+  printDigitsLcd(minuto);
 }
 
+
+void handleState()
+{
+  ellapsedTime += (millis() / 1000);
+  if(digitalRead(SETPIN) && ellapsedTime > 1)
+  {
+    ellapsedTime = 0;
+
+    switch(state)
+    {
+      case STATE_IDLE:
+      state = STATE_CHANGE_INIT;
+      break;
+
+      case STATE_CHANGE_INIT:
+      state = STATE_CHANGE_END;
+      break;
+
+      default:
+      state = STATE_IDLE;
+      break;
+    }
+  }
+
+  if(ellapsedTime > 5)
+  {
+    state = STATE_IDLE;
+  }
+}
 
 void handleLuz()
 {
@@ -158,13 +241,10 @@ void handleLuz()
   }
 }
 
-
-
 /*
 0000000000000000
 00T:990000H:9900
 */
-
 void mostrarTemperaturaHumedad()
 {
   int h = (int)dht.readHumidity();
